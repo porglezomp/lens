@@ -17,7 +17,7 @@ enum Tokens {
 class Tokenizer {
 public:
     Tokenizer();
-    std::string token_string;
+    std::string identifier_string;
     std::string number_string;
     std::string token_error;
     int line, col;
