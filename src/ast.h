@@ -4,22 +4,30 @@
 
 #include <string>
 #include <vector>
+#include <iostream>
 struct Value;
 
 class ExprAST {
  public:
+    virtual void print(std::ostream* str) const = 0;
     virtual ~ExprAST() {}
+    friend std::ostream& operator<<(std::ostream& out, ExprAST const& ast) {
+        ast.print(&out);
+        return out;
+    }
 };
 
 class NumberAST : public ExprAST {
     double value;
  public:
+    virtual void print(std::ostream* out) const;
     explicit NumberAST(double number);
 };
 
 class VariableAST : public ExprAST {
     std::string name;
  public:
+    virtual void print(std::ostream* out) const;
     explicit VariableAST(std::string str);
 };
 
@@ -27,7 +35,16 @@ class BinaryExprAST : public ExprAST {
     int op;
     ExprAST *lhs, *rhs;
  public:
+    virtual void print(std::ostream* out) const;
     BinaryExprAST(ExprAST *lhs, int op, ExprAST *rhs);
+};
+
+class AssignmentAST : public ExprAST {
+    std::string name;
+    ExprAST *rhs;
+ public:
+    virtual void print(std::ostream* out) const;
+    AssignmentAST(std::string name, ExprAST *rhs);
 };
 
 class PrototypeAST {
@@ -35,13 +52,15 @@ class PrototypeAST {
     std::vector<std::string> args;
  public:
     PrototypeAST(std::string name, std::vector<std::string> args);
+    friend std::ostream& operator<<(std::ostream& out, PrototypeAST const& ast);
 };
 
 class FunctionAST {
     PrototypeAST *proto;
-    ExprAST *body;
+    std::vector<ExprAST*> body;
  public:
-    FunctionAST(PrototypeAST *proto, ExprAST *body);
+    FunctionAST(PrototypeAST *proto, std::vector<ExprAST*> body);
+    friend std::ostream& operator<<(std::ostream& out, FunctionAST const& ast);
 };
 
 struct StructElement {

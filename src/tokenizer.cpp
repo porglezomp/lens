@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <cstdio>
 
-Tokenizer::Tokenizer() : line(1), col(1) {
+Tokenizer::Tokenizer() : indentation(-1), line(1), col(1) {
     this->get_char();
 }
 
@@ -21,16 +21,17 @@ char Tokenizer::get_char() {
     return value;
 }
 
-int Tokenizer::indentation() {
+int Tokenizer::get_indentation() {
     int indent = 0;
-    while (isblank(this->next_char)) {
+    while (isblank(next_char)) {
         if (next_char == '\t') {
+            // Tabs are worth 8 spaces
             indent += 8;
-            col += 7;
+            col += 7;  // get_char() already adds one, this gets it up to 8
         } else {
             indent++;
         }
-        this->get_char();
+        get_char();
     }
     return indent;
 }
@@ -86,22 +87,42 @@ int Tokenizer::get_num() {
 }
 
 int Tokenizer::get_token() {
+    if (indentation == -1) {
+        indentation = get_indentation();
+    }
     // Clean out any whitespace between tokens
-    while (isblank(this->next_char)) {
-        this->get_char();
+    while (isblank(next_char)) {
+        get_char();
     }
     // Identifiers: [a-zA-Z_][a-zA-Z0-9_]*
-    if (isalpha(this->next_char) || this->next_char == '_') {
+    if (isalpha(next_char) || next_char == '_') {
         return get_ident();
     }
     // Numbers: [0-9]+(.[0-9]*)?
-    if (isdigit(this->next_char)) {
+    if (isdigit(next_char)) {
         return get_num();
+    }
+    if (next_char == '-') {
+        get_char();  // Consume '-'
+        if (next_char == '>') {
+            // We've found a "produces" token (->)
+            get_char();  // Consume '>'
+            return tokProduces;
+        }
+        return '-';
     }
     // Recognize EOF
     if (next_char == EOF) {
-        get_char();
+        // Drop out to global scope at the end of the file
+        indentation = 0;
         return tokEOF;
+    }
+    // Recognize newlines
+    if (next_char == '\n') {
+        get_char();  // Consume '\n'
+        // Ask for indentation to be updated
+        indentation = -1;
+        return tokNewline;
     }
     int value = next_char;
     get_char();  // Flush the lookahead

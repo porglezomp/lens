@@ -4,10 +4,12 @@
 
 #include "src/parser.h"
 #include "src/tokenizer.h"
+#include "src/ast.h"
 
 int main() {
     auto tokenizer = Tokenizer();
     auto parser = Parser(tokenizer);
-    std::cout << parser.parse_top_level() << std::endl;
+    FunctionAST *result = parser.parse_top_level();
+    if (result) std::cout << (*result) << std::endl;
     return 0;
 }

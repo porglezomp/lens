@@ -7,6 +7,8 @@
 
 #include "src/ast.h"
 
+#define ERROR(msg) (Error(msg), nullptr)
+
 Parser::Parser(Tokenizer tok) : tokenizer(tok) {
     operator_precedence['+'] = 20;
     operator_precedence['-'] = 20;
@@ -33,8 +35,7 @@ ExprAST *Parser::parse_paren_expr() {
     if (inner == NULL) return NULL;
 
     if (next_token != ')') {
-        Error("expected ')'");
-        return NULL;
+        return ERROR("expected ')'");
     }
     get_next_token();  // Consume ')'
     return inner;
@@ -44,19 +45,16 @@ ExprAST *Parser::parse_identifer_expr() {
     std::string identifier_name = tokenizer.identifier_string;
     get_next_token();  // Consume identifier string
 
-    if (next_token != '(') {
-        return new VariableAST(identifier_name);
-    } else {
-        Error("functions unsupported!");
-        return NULL;
+    if (next_token == '(') {
+        return ERROR("functions unsupported!");
     }
+    return new VariableAST(identifier_name);
 }
 
 ExprAST *Parser::parse_primary_expr() {
     switch (next_token) {
     default:
-        Error("unknown token while expecting expression");
-        return NULL;
+        return ERROR("unknown token while expecting expression");
     case tokIdentifier:
         return Parser::parse_identifer_expr();
     case tokNumber:
@@ -79,10 +77,139 @@ ExprAST *Parser::parse_expression() {
     return parse_binop_rhs(0, lhs);
 }
 
+ExprAST *Parser::parse_assignment() {
+    if (next_token != tokLet) {
+        return ERROR("ICE: Expecting 'let' in Parser::parse_assignment");
+    }
+    get_next_token();  // Consume the 'let'
+
+    std::string name;
+    if (next_token != tokIdentifier) {
+        return ERROR("expecting variable name after 'let'");
+    }
+    name = tokenizer.identifier_string;
+    get_next_token();  // Consume the LHS
+
+    if (next_token != '=') return ERROR("expecting = after variable name "
+                            "(declaration without definition not supported)");
+    get_next_token();  // Consume the '='
+
+    ExprAST *rhs = parse_expression();
+    if (rhs == NULL) return ERROR("expecting expression after '='");
+
+    return new AssignmentAST(name, rhs);
+}
+
+ExprAST *Parser::parse_line() {
+    ExprAST *result = NULL;
+    if (next_token == tokLet) {
+        result = parse_assignment();
+    } else {
+        return parse_expression();
+    }
+    if (next_token == tokNewline) {
+        get_next_token();  // Consume the newline
+    }
+    return result;
+}
+
+FunctionAST *Parser::parse_function() {
+    if (next_token != tokDef) {
+        return ERROR("ICE: Expecting 'def' in Parser::parse_function");
+    }
+    get_next_token();  // Consume 'def'
+
+    if (next_token != tokIdentifier) {
+        return ERROR("expecting identifier after def");
+    }
+    std::string function_name = tokenizer.identifier_string;
+    get_next_token();  // Consume identifier string
+
+    if (next_token != '(') {
+        return ERROR("expecting '(' after function name");
+    }
+    get_next_token();  // Consume '('
+
+    std::vector<std::string> args;
+    if (next_token != ')') {
+        while (true) {
+            if (next_token != tokIdentifier) {
+                return ERROR("expecting identifier in argument list");
+            }
+            // Save the argument name
+            args.push_back(tokenizer.identifier_string);
+            get_next_token();  // Consume the argument name
+
+            if (next_token != ':') {
+                return ERROR("expecting ':' after argument name");
+            }
+            get_next_token();  // Consume ':'
+
+            // Currently we just throw the type away, but we still want
+            // to consume it
+            if (next_token != tokIdentifier) {
+                return ERROR("expecting type after ':'");
+            }
+            get_next_token();  // Consume the type name
+
+            if (next_token == ')') {
+                break;
+            } else if (next_token != ',') {
+                return ERROR("expecting ','");
+            }
+            get_next_token();  // Consume ','
+        }
+    }
+    get_next_token();  // Consume ')'
+
+    if (next_token != tokProduces) {
+        return ERROR("expecting '->' after argument list");
+    }
+    get_next_token();  // Consume '->'
+
+    // We currently only support single identifier types
+    if (next_token != tokIdentifier) {
+        return ERROR("expecting return type after '->'");
+    }
+    get_next_token();  // Consume return type
+
+    if (next_token != ':') return ERROR("expecting ':'");
+    get_next_token();  // Consume ':'
+
+    if (next_token != tokNewline) return ERROR("expecting newline");
+    get_next_token();  // Consume the newline
+
+    // Find the indentation of the child block
+    int indent = tokenizer.indentation;
+    // Not indenting is an error, so fail if there's none
+    if (indent == 0) {
+        return ERROR("expecting indent in function body");
+    }
+
+    std::vector<ExprAST*> body;
+    // As long as the code is indented the same amount, read it
+    do {
+        // Parse a line of the body
+        ExprAST *expr = parse_line();
+        // If parsing the line fails, bail!
+        if (expr == NULL) return ERROR("error in function body?");
+        // Otherwise, add it to the body
+        body.push_back(expr);
+        if (tokenizer.indentation == -1) {
+            tokenizer.indentation = tokenizer.get_indentation();
+        }
+    } while (tokenizer.indentation == indent);
+    PrototypeAST *proto = new PrototypeAST(function_name, args);
+    return new FunctionAST(proto, body);
+}
+
 FunctionAST *Parser::parse_top_level() {
-    if (ExprAST *expr = parse_expression()) {
+    if (next_token == tokDef) {
+        return parse_function();
+    } else if (ExprAST *expr = parse_line()) {
         PrototypeAST *proto = new PrototypeAST("", std::vector<std::string>());
-        return new FunctionAST(proto, expr);
+        std::vector<ExprAST*> body = {expr};
+        return new FunctionAST(proto, body);
     }
     return NULL;
 }

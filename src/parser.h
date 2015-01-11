@@ -13,21 +13,26 @@ class FunctionAST;
 class Parser {
     Tokenizer tokenizer;
     std::map<int, int> operator_precedence;
+
  public:
     explicit Parser(Tokenizer tok);
-    void Error(std::string msg);
     int next_token;
     int get_next_token();
+    ExprAST *parse_line();
     ExprAST *parse_number_expr();
     ExprAST *parse_identifer_expr();
     ExprAST *parse_paren_expr();
     ExprAST *parse_primary_expr();
+    ExprAST *parse_assignment();
     ExprAST *parse_binop_rhs(int precedence, ExprAST *lhs);
 
+    FunctionAST *parse_function();
     FunctionAST *parse_top_level();
 
     ExprAST *parse_expression();
     int get_token_precedence();
+
+    void Error(std::string msg);
 };
 
 #endif  // LENS_PARSER_H_

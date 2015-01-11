@@ -51,13 +51,14 @@ class Tokenizer {
     Tokenizer();
     std::string identifier_string;
     std::string number_string;
+    int indentation;
     double number_value;
     std::string token_error;
     int line, col;
     char next_char;
 
     char get_char();
-    int indentation();
+    int get_indentation();
     int get_token();
  private:
     int get_num();
