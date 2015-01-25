@@ -60,6 +60,7 @@ int Tokenizer::get_ident() {
     if (identifier_string == "none") return tokNone;
     if (identifier_string == "true") return tokTrue;
     if (identifier_string == "false") return tokFalse;
+    if (identifier_string == "f64") return tokType;
     return tokIdentifier;
 }
 

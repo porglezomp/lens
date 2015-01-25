@@ -2,10 +2,8 @@ TARGET = lensc
 SRCS = $(shell find src -name "*.cpp")
 OBJS = $(patsubst src/%.cpp,obj/%.o,$(SRCS))
 DEPS = $(OBJS:%.o=%.d)
-CFLAGS = -I./ --std=c++11 -Wall -g
-#$(shell llvm-config-3.4 --cflags)
-LIBS =
-#$(shell llvm-config-3.4 --libs)
+CFLAGS = -I./ --std=c++11 -Wall -g $(shell llvm-config-3.4 --cflags)
+LIBS = $(shell llvm-config-3.4 --ldflags --libs core)
 
 $(TARGET): $(OBJS)
 	$(CXX) -o $(TARGET) $(OBJS) $(CFLAGS) $(LIBS)

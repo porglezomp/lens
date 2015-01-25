@@ -45,10 +45,26 @@ ExprAST *Parser::parse_identifer_expr() {
     std::string identifier_name = tokenizer.identifier_string;
     get_next_token();  // Consume identifier string
 
-    if (next_token == '(') {
-        return ERROR("functions unsupported!");
+    if (next_token != '(') return new VariableAST(identifier_name);
+    get_next_token();  // Consume '('
+
+    std::vector<ExprAST*> args;
+    if (next_token != ')') {
+        while (true) {
+            ExprAST *next_expr = parse_expression();
+            if (next_expr == NULL) return NULL;
+            args.push_back(next_expr);
+
+            // We're done with the argument list
+            if (next_token == ')') break;
+
+            if (next_token != ',') return ERROR("expecting ',' in arguments");
+            get_next_token();  // Consume ','
+        }
     }
-    return new VariableAST(identifier_name);
+    get_next_token();  // Consume ')'
+
+    return new CallAST(identifier_name, args);
 }
 
 ExprAST *Parser::parse_primary_expr() {
@@ -100,10 +116,26 @@ ExprAST *Parser::parse_assignment() {
     return new AssignmentAST(name, rhs);
 }
 
+ExprAST *Parser::parse_return() {
+    if (next_token != tokReturn) {
+        ERROR("ICE: expecting return in Parser::parse_return");
+    }
+    get_next_token();  // Consume 'return'
+
+    // Get the value to be returned
+    ExprAST *rvalue = parse_expression();
+    if (rvalue == NULL) {
+        ERROR("expecting expression after 'return' keyword");
+    }
+    return new ReturnAST(rvalue);
+}
+
 ExprAST *Parser::parse_line() {
     ExprAST *result = NULL;
     if (next_token == tokLet) {
         result = parse_assignment();
+    } else if (next_token == tokReturn) {
+        result = parse_return();
     } else {
         return parse_expression();
     }
@@ -147,7 +179,7 @@ FunctionAST *Parser::parse_function() {
 
             // Currently we just throw the type away, but we still want
             // to consume it
-            if (next_token != tokIdentifier) {
+            if (next_token != tokType) {
                 return ERROR("expecting type after ':'");
             }
             get_next_token();  // Consume the type name
@@ -168,7 +200,7 @@ FunctionAST *Parser::parse_function() {
     get_next_token();  // Consume '->'
 
     // We currently only support single identifier types
-    if (next_token != tokIdentifier) {
+    if (next_token != tokType) {
         return ERROR("expecting return type after '->'");
     }
     get_next_token();  // Consume return type

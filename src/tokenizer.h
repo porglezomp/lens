@@ -43,7 +43,8 @@ enum Tokens {
     tokPass,
     tokTrue,
     tokFalse,
-    tokNone
+    tokNone,
+    tokType
 };
 
 class Tokenizer {

@@ -25,6 +25,7 @@ class Parser {
     ExprAST *parse_primary_expr();
     ExprAST *parse_assignment();
     ExprAST *parse_binop_rhs(int precedence, ExprAST *lhs);
+    ExprAST *parse_return();
 
     FunctionAST *parse_function();
     FunctionAST *parse_top_level();
