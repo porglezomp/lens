@@ -38,7 +38,7 @@ void NumberAST::print(std::ostream *out) const {
     *out << value;
 }
 
-Value *NumberAST::codegen() {
+Value *NumberAST::expr_codegen() {
     return ConstantFP::get(getGlobalContext(), APFloat(value));
 }
 
@@ -55,7 +55,7 @@ void VariableAST::print(std::ostream *out) const {
     *out << name;
 }
 
-Value *VariableAST::codegen() {
+Value *VariableAST::expr_codegen() {
     Value *V = NamedValues[name];
     return V ? V : ERROR("Unknown variable name '%s'", name.c_str());
 }
@@ -78,9 +78,9 @@ void BinaryExprAST::print(std::ostream *out) const {
     *out << ")";
 }
 
-Value *BinaryExprAST::codegen() {
-    Value *L = lhs->codegen();
-    Value *R = rhs->codegen();
+Value *BinaryExprAST::expr_codegen() {
+    Value *L = lhs->expr_codegen();
+    Value *R = rhs->expr_codegen();
     if (L == NULL || R == NULL) return NULL;
 
     switch (op) {
@@ -111,7 +111,7 @@ void CallAST::print(std::ostream *out) const {
     *out << ")";
 }
 
-Value *CallAST::codegen() {
+Value *CallAST::expr_codegen() {
     Function *callee_function = TheModule()->getFunction(name);
     if (callee_function == NULL) {
         return ERROR("unknown function referenced");
@@ -123,7 +123,7 @@ Value *CallAST::codegen() {
 
     std::vector<Value*> argv;
     for (unsigned i = 0, e = args.size(); i != e; i++) {
-        argv.push_back(args[i]->codegen());
+        argv.push_back(args[i]->expr_codegen());
         if (argv.back() == NULL) return NULL;
     }
 
@@ -145,12 +145,14 @@ void AssignmentAST::print(std::ostream *out) const {
     rhs->print(out);
 }
 
-Value *AssignmentAST::codegen() {
+bool AssignmentAST::codegen() {
     // TODO(Caleb Jones): Implement
     // Is this a correct implementation?
-    auto value = rhs->codegen();
+    auto value = rhs->expr_codegen();
+    if (value == NULL) return false;
+    value->setName(name);
     NamedValues[name] = value;
-    return value;
+    return true;
 }
 
 // int AssignmentAST::type() {
@@ -167,10 +169,13 @@ void ReturnAST::print(std::ostream *out) const {
     rvalue->print(out);
 }
 
-Value *ReturnAST::codegen() {
+bool ReturnAST::codegen() {
     // TODO(Caleb Jones): Implement
     // Is this the proper implementation? Who knows!
-    return Builder.CreateRet(rvalue->codegen());
+    auto result = rvalue->expr_codegen();
+    if (result == NULL) return false;
+    Builder.CreateRet(result);
+    return true;
 }
 
 // int ReturnAST::type() {
@@ -196,8 +201,12 @@ Function *PrototypeAST::codegen() {
     // Make the function type: (Currently just (double, double, ...) -> double)
     std::vector<Type*> doubles(args.size(),
                                Type::getDoubleTy(getGlobalContext()));
+    auto ret_type = Type::getDoubleTy(getGlobalContext());
+    if (name == "main") {
+        ret_type = Type::getInt32Ty(getGlobalContext());
+    }
     FunctionType *ftype = FunctionType::get(
-        Type::getDoubleTy(getGlobalContext()),
+        ret_type,
         doubles,
         false);
 
@@ -222,15 +231,20 @@ Function *PrototypeAST::codegen() {
 }
 
 // ========================================================================= //
+// Conditions
+// ========================================================================= //
+IfElseAST::IfElseAST() {}
+
+// ========================================================================= //
 // Functions
 // ========================================================================= //
-FunctionAST::FunctionAST(PrototypeAST *proto, std::vector<ExprAST*> body)
+FunctionAST::FunctionAST(PrototypeAST *proto, std::vector<StatementAST*> body)
     : proto(proto), body(body) {}
 
 std::ostream& operator<<(std::ostream& out, FunctionAST const& ast) {
     out << *ast.proto << ":\n";
     for (auto iter = ast.body.begin(); iter != ast.body.end(); iter++) {
-        // Dereference twice to go iterator -> ExprAST* -> ExprAST
+        // Dereference twice to go iterator -> StatementAST* -> StatementAST
         out << "    " << **iter << "\n";
     }
     return out;
@@ -247,19 +261,19 @@ Function *FunctionAST::codegen() {
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", function);
     Builder.SetInsertPoint(bb);
 
-    Value *temp;
+    bool success;
     for (auto iter = body.begin(); iter != body.end(); iter++) {
-        temp = (*iter)->codegen();
-        if (temp == NULL) {
+        success = (*iter)->codegen();
+        if (!success) {
             return ERROR("Error generating function code");
         }
     }
-    if (proto->name == "") {
-        Builder.CreateRet(temp);
+    if (proto->name == "main") {
+        Builder.CreateRet(
+            ConstantInt::get(Type::getInt32Ty(getGlobalContext()), 0));
     }
 
     verifyFunction(*function);
 
     return function;
 }
-

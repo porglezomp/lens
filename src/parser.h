@@ -7,6 +7,7 @@
 
 class ExprAST;
 class FunctionAST;
+class StatementAST;
 
 class Tokenizer;
 
@@ -18,14 +19,14 @@ class Parser {
     explicit Parser(Tokenizer &tok);
     int next_token;
     int get_next_token();
-    ExprAST *parse_line();
+    StatementAST *parse_line();
     ExprAST *parse_number_expr();
     ExprAST *parse_identifer_expr();
     ExprAST *parse_paren_expr();
     ExprAST *parse_primary_expr();
-    ExprAST *parse_assignment();
+    StatementAST *parse_assignment();
     ExprAST *parse_binop_rhs(int precedence, ExprAST *lhs);
-    ExprAST *parse_return();
+    StatementAST *parse_return();
 
     FunctionAST *parse_function();
     FunctionAST *parse_top_level();

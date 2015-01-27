@@ -97,7 +97,7 @@ ExprAST *Parser::parse_expression() {
     return parse_binop_rhs(0, lhs);
 }
 
-ExprAST *Parser::parse_assignment() {
+StatementAST *Parser::parse_assignment() {
     if (next_token != tokLet) {
         return ERROR("ICE: Expecting 'let' in Parser::parse_assignment");
     }
@@ -120,7 +120,7 @@ ExprAST *Parser::parse_assignment() {
     return new AssignmentAST(name, rhs);
 }
 
-ExprAST *Parser::parse_return() {
+StatementAST *Parser::parse_return() {
     if (next_token != tokReturn) {
         ERROR("ICE: expecting return in Parser::parse_return");
     }
@@ -134,8 +134,8 @@ ExprAST *Parser::parse_return() {
     return new ReturnAST(rvalue);
 }
 
-ExprAST *Parser::parse_line() {
-    ExprAST *result = NULL;
+StatementAST *Parser::parse_line() {
+    StatementAST *result = NULL;
     if (next_token == tokLet) {
         result = parse_assignment();
     } else if (next_token == tokReturn) {
@@ -221,11 +221,11 @@ FunctionAST *Parser::parse_function() {
     }
     get_next_token();  // Consume the indentation token
 
-    std::vector<ExprAST*> body;
+    std::vector<StatementAST*> body;
     // As long as the code is indented the same amount, read it
     do {
         // Parse a line of the body
-        ExprAST *expr = parse_line();
+        StatementAST *expr = parse_line();
         // If parsing the line fails, bail!
         if (expr == NULL) return ERROR("error in function body?");
         // Otherwise, add it to the body
@@ -239,18 +239,19 @@ FunctionAST *Parser::parse_function() {
 FunctionAST *Parser::parse_top_level() {
     // TODO(Caleb Jones) Is it safe to just skip blank lines like this?
     while (next_token == tokNewline) {
-        std::cerr << "Skipping toplevel newline" << std::endl;
+        // std::cerr << "Skipping toplevel newline" << std::endl;
         get_next_token();
     }
     if (next_token == tokEOF) {
-        std::cerr << "EOF" << std::endl;
+        // std::cerr << "EOF" << std::endl;
         return NULL;
     }
     if (next_token == tokDef) {
         return parse_function();
-    } else if (ExprAST *expr = parse_line()) {
-        PrototypeAST *proto = new PrototypeAST("", std::vector<std::string>());
-        std::vector<ExprAST*> body = {expr};
+    } else if (StatementAST *expr = parse_line()) {
+        PrototypeAST *proto = new PrototypeAST("main",
+                                               std::vector<std::string>());
+        std::vector<StatementAST*> body = {expr};
         return new FunctionAST(proto, body);
     }
     return NULL;

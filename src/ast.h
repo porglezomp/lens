@@ -21,17 +21,26 @@ enum AST_TYPES {
 
 llvm::Module *TheModule();
 
-class ExprAST {
+class StatementAST {
  public:
-    virtual ~ExprAST() {}
-    virtual llvm::Value *codegen() = 0;
-    // virtual int type();
-
+    virtual ~StatementAST() {}
     virtual void print(std::ostream* str) const = 0;
-    friend std::ostream& operator<<(std::ostream& out, ExprAST const& ast) {
+    friend std::ostream& operator<<(std::ostream& out, StatementAST const& ast) {
         ast.print(&out);
         return out;
     }
+    virtual bool codegen() = 0;
+};
+
+class ExprAST : public StatementAST {
+ public:
+    virtual ~ExprAST() {}
+    virtual bool codegen() {
+        llvm::Value *res = expr_codegen();
+        return (res != NULL);
+    }
+    virtual llvm::Value *expr_codegen() = 0;
+    // virtual int type();
 };
 
 class NumberAST : public ExprAST {
@@ -39,7 +48,7 @@ class NumberAST : public ExprAST {
  public:
     virtual void print(std::ostream* out) const;
     explicit NumberAST(double number);
-    virtual llvm::Value *codegen();
+    virtual llvm::Value *expr_codegen();
     // virtual int type();
 };
 
@@ -48,7 +57,7 @@ class VariableAST : public ExprAST {
  public:
     virtual void print(std::ostream* out) const;
     explicit VariableAST(std::string str);
-    virtual llvm::Value *codegen();
+    virtual llvm::Value *expr_codegen();
     // virtual int type();
 };
 
@@ -59,7 +68,7 @@ class BinaryExprAST : public ExprAST {
  public:
     virtual void print(std::ostream* out) const;
     BinaryExprAST(ExprAST *lhs, int op, ExprAST *rhs);
-    virtual llvm::Value *codegen();
+    virtual llvm::Value *expr_codegen();
     // virtual int type();
 };
 
@@ -70,29 +79,34 @@ class CallAST : public ExprAST {
  public:
     CallAST(std::string name, std::vector<ExprAST*> args);
     virtual void print(std::ostream* out) const;
-    virtual llvm::Value *codegen();
+    virtual llvm::Value *expr_codegen();
     // virtual int type();
 };
 
 // let <ident> = <expr>
-class AssignmentAST : public ExprAST {
+class AssignmentAST : public StatementAST {
     std::string name;
     ExprAST *rhs;
  public:
     virtual void print(std::ostream* out) const;
     AssignmentAST(std::string name, ExprAST *rhs);
-    virtual llvm::Value *codegen();
+    virtual bool codegen();
     // virtual int type();
 };
 
 // return <expr>
-class ReturnAST : public ExprAST {
+class ReturnAST : public StatementAST {
     ExprAST *rvalue;
  public:
     virtual void print(std::ostream* out) const;
     explicit ReturnAST(ExprAST *rhs);
-    virtual llvm::Value *codegen();
+    virtual bool codegen();
     // virtual int type();
+};
+
+class IfElseAST : public StatementAST {
+ public:
+    IfElseAST();
 };
 
 class PrototypeAST {
@@ -108,9 +122,9 @@ class PrototypeAST {
 
 class FunctionAST {
     PrototypeAST *proto;
-    std::vector<ExprAST*> body;
+    std::vector<StatementAST*> body;
  public:
-    FunctionAST(PrototypeAST *proto, std::vector<ExprAST*> body);
+    FunctionAST(PrototypeAST *proto, std::vector<StatementAST*> body);
     friend std::ostream& operator<<(std::ostream& out, FunctionAST const& ast);
     llvm::Function *codegen();
 };
