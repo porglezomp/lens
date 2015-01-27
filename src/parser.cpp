@@ -6,10 +6,13 @@
 #include <vector>
 
 #include "src/ast.h"
+#include "src/tokenizer.h"
+#include "src/reader.h"
 
-#define ERROR(msg) (Error(msg), nullptr)
+#define ERROR(msg, ...) (printf("Error at line %d column %d: " msg "\n", \
+tokenizer.line->line_number, tokenizer.col, ##__VA_ARGS__), nullptr)
 
-Parser::Parser(Tokenizer tok) : tokenizer(tok) {
+Parser::Parser(Tokenizer &tok) : tokenizer(tok) {
     operator_precedence['+'] = 20;
     operator_precedence['-'] = 20;
     operator_precedence['*'] = 40;
@@ -70,7 +73,8 @@ ExprAST *Parser::parse_identifer_expr() {
 ExprAST *Parser::parse_primary_expr() {
     switch (next_token) {
     default:
-        return ERROR("unknown token while expecting expression");
+        return ERROR("unknown token '%s' while expecting expression",
+                     token_name(next_token));
     case tokIdentifier:
         return Parser::parse_identifer_expr();
     case tokNumber:
@@ -140,7 +144,7 @@ ExprAST *Parser::parse_line() {
         return parse_expression();
     }
     if (next_token == tokNewline) {
-        get_next_token();  // Consume the newline
+        get_next_token();  // Consume the newline at the end of the line
     }
     return result;
 }
@@ -211,12 +215,11 @@ FunctionAST *Parser::parse_function() {
     if (next_token != tokNewline) return ERROR("expecting newline");
     get_next_token();  // Consume the newline
 
-    // Find the indentation of the child block
-    int indent = tokenizer.indentation;
     // Not indenting is an error, so fail if there's none
-    if (indent == 0) {
+    if (next_token != tokIndent) {
         return ERROR("expecting indent in function body");
     }
+    get_next_token();  // Consume the indentation token
 
     std::vector<ExprAST*> body;
     // As long as the code is indented the same amount, read it
@@ -227,15 +230,22 @@ FunctionAST *Parser::parse_function() {
         if (expr == NULL) return ERROR("error in function body?");
         // Otherwise, add it to the body
         body.push_back(expr);
-        if (tokenizer.indentation == -1) {
-            tokenizer.indentation = tokenizer.get_indentation();
-        }
-    } while (tokenizer.indentation == indent);
+    } while (next_token != tokDedent);
+    get_next_token();  // Consume unindent token
     PrototypeAST *proto = new PrototypeAST(function_name, args);
     return new FunctionAST(proto, body);
 }
 
 FunctionAST *Parser::parse_top_level() {
+    // TODO(Caleb Jones) Is it safe to just skip blank lines like this?
+    while (next_token == tokNewline) {
+        std::cerr << "Skipping toplevel newline" << std::endl;
+        get_next_token();
+    }
+    if (next_token == tokEOF) {
+        std::cerr << "EOF" << std::endl;
+        return NULL;
+    }
     if (next_token == tokDef) {
         return parse_function();
     } else if (ExprAST *expr = parse_line()) {
@@ -274,9 +284,4 @@ ExprAST *Parser::parse_binop_rhs(int expr_precedence, ExprAST *lhs) {
 
         lhs = new BinaryExprAST(lhs, binop, rhs);
     }  // while loop
-}
-
-void Parser::Error(std::string msg) {
-    printf("Error at line %d column %d: %s\n",
-           tokenizer.line, tokenizer.col, msg.c_str());
 }

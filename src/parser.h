@@ -8,14 +8,14 @@
 class ExprAST;
 class FunctionAST;
 
-#include "src/tokenizer.h"
+class Tokenizer;
 
 class Parser {
-    Tokenizer tokenizer;
+    Tokenizer &tokenizer;
     std::map<int, int> operator_precedence;
 
  public:
-    explicit Parser(Tokenizer tok);
+    explicit Parser(Tokenizer &tok);
     int next_token;
     int get_next_token();
     ExprAST *parse_line();

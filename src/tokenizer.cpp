@@ -3,37 +3,34 @@
 
 #include <cstdlib>
 #include <cstdio>
+#include <string>
+#include <iostream>
 
-Tokenizer::Tokenizer() : indentation(-1), line(1), col(1) {
-    this->get_char();
+#include "src/reader.h"
+
+Tokenizer::Tokenizer(Reader &r) : reader(r), line(&reader.next_line()), col(0) {
+    is_new_line = true;
+    indent_stack.push_back(0);
+    get_char();
 }
 
 char Tokenizer::get_char() {
     char value = next_char;
     // Do bookkeeping on line/column numbers
     if (value == '\n') {
-        line += 1;
-        col = 1;
+        line = &reader.next_line();
+        col = line->indentation + 1;
+        line_index = 0;
+        is_new_line = true;
     } else {
         col += 1;
     }
-    next_char = std::getchar();
-    return value;
-}
-
-int Tokenizer::get_indentation() {
-    int indent = 0;
-    while (isblank(next_char)) {
-        if (next_char == '\t') {
-            // Tabs are worth 8 spaces
-            indent += 8;
-            col += 7;  // get_char() already adds one, this gets it up to 8
-        } else {
-            indent++;
-        }
-        get_char();
+    if (line->is_eof) {
+        next_char = EOF;
+    } else {
+        next_char = line->text[line_index++];
     }
-    return indent;
+    return value;
 }
 
 int Tokenizer::get_ident() {
@@ -88,8 +85,30 @@ int Tokenizer::get_num() {
 }
 
 int Tokenizer::get_token() {
-    if (indentation == -1) {
-        indentation = get_indentation();
+    // Handle any potential new lines
+    if (is_new_line) {
+        // If the current line is indented more than the previous one,
+        // then send an indentation token and update the indent stack
+        if (line->indentation > indent_stack.back()) {
+            indent_stack.push_back(line->indentation);
+            is_new_line = false;
+            return tokIndent;
+        }
+        // If the current line is indented less than the previous one
+        if (line->indentation < indent_stack.back()) {
+            // Pop the current indentation level off of the stack
+            indent_stack.pop_back();
+            // If the current level of indentation is more than the next level
+            // of indentation lower, then this is a bad indentation level.
+            // See the header file for more information
+            if (line->indentation > indent_stack.back()) return tokBadDedent;
+            // If the indentation level is more than one level down, multiple
+            // `tokDedent`s will be submitted
+            return tokDedent;
+        }
+        // The current line has the same indentation as the previous one,
+        // so we don't need to submit any tokens
+        is_new_line = false;
     }
     // Clean out any whitespace between tokens
     while (isblank(next_char)) {
@@ -115,18 +134,63 @@ int Tokenizer::get_token() {
     // Recognize EOF
     if (next_char == EOF) {
         // Drop out to global scope at the end of the file
-        indentation = 0;
         return tokEOF;
-    }
-    // Recognize newlines
-    if (next_char == '\n') {
-        get_char();  // Consume '\n'
-        // Ask for indentation to be updated
-        indentation = -1;
-        return tokNewline;
     }
     int value = next_char;
     get_char();  // Flush the lookahead
     // Just return the ASCII value if it's not recognized
     return value;
+}
+
+char token_strings[256][2];
+std::string undefined_string;
+
+const char *token_name(int tok) {
+    switch (tok) {
+    case tokEOF: return "EOF";
+    case tokIdentifier: return "identifier";
+    case tokNumber: return "number";
+    case tokProduces: return "->";
+    case tokDef: return "def";
+    case tokLet: return "let";
+    case tokMut: return "mut";
+    case tokStruct: return "struct";
+    case tokFor: return "for";
+    case tokIn: return "in";
+    case '\n': return "\\n";
+    case tokIf: return "if";
+    case tokIndent: return "INDENT_TOKEN";
+    case tokDedent: return "UNINDENT_TOKEN";
+    case tokBadDedent: return "INVALID_UNINDENT_TOKEN";
+    // tokElif,
+    // tokElse,
+    // tokAnd,
+    // tokOr,
+    // tokEq,
+    // tokNot,
+    // case tokAssign: return "=";
+    // tokNotEq,
+    // tokBitAnd,
+    // tokBitOr,
+    // tokXor,
+    // tokBitNot,
+    // tokIs,
+    // tokReturn,
+    // tokDefault,
+    // tokPass,
+    // tokTrue,
+    // tokFalse,
+    // tokNone,
+    // tokType
+    }
+    if (tok > 0 && tok < 256) {
+        token_strings[tok][0] = static_cast<char>(tok);
+        token_strings[tok][1] = '\0';
+        return static_cast<const char*>(token_strings[tok]);
+    }
+    undefined_string = "UNDEFINED_TOKEN(";
+    undefined_string += tok;
+    undefined_string += ")";
+    std::cout << static_cast<int>(tok) << std::endl;
+    return undefined_string.c_str();
 }

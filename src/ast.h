@@ -19,6 +19,8 @@ enum AST_TYPES {
     RETURN_AST
 };
 
+llvm::Module *TheModule();
+
 class ExprAST {
  public:
     virtual ~ExprAST() {}

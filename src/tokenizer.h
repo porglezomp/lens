@@ -3,6 +3,12 @@
 #define LENS_TOKENIZER_H_ 1
 
 #include <string>
+#include <vector>
+
+class Reader;
+struct Line;
+
+const char *token_name(int tok);
 
 enum Tokens {
     tokInvalid = -1,
@@ -17,6 +23,15 @@ enum Tokens {
     // Tokens beyond ASCII:
     tokIdentifier = 256,
     tokNumber,
+    tokIndent,  // Produced when a line is indented more than the previous
+    tokDedent,  // Produced when a line is less indented than the previous
+    // Produced when a line is indented to less than the previous,
+    // and more than the next indentation level down.
+    // Example:
+    // if a == b:
+    // ....do_something()
+    // ..bad_one()  # This line isn't indented correctly
+    tokBadDedent,
     tokProduces,
     tokDef,
     tokLet,
@@ -48,18 +63,21 @@ enum Tokens {
 };
 
 class Tokenizer {
+    Reader &reader;
+    std::vector<int> indent_stack;
+    bool is_new_line;
+    int line_index;
  public:
-    Tokenizer();
+    explicit Tokenizer(Reader &r);
     std::string identifier_string;
     std::string number_string;
-    int indentation;
     double number_value;
     std::string token_error;
-    int line, col;
+    const Line *line;
+    int col;
     char next_char;
 
     char get_char();
-    int get_indentation();
     int get_token();
  private:
     int get_num();

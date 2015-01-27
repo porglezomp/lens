@@ -14,7 +14,8 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Analysis/Verifier.h"
 
-#define ERROR(msg) (printf("Code generation error: %s", msg), nullptr)
+#define ERROR(msg, ...) (printf("Code generation error: " msg "\n", \
+##__VA_ARGS__), nullptr)
 
 using namespace llvm;
 
@@ -56,7 +57,7 @@ void VariableAST::print(std::ostream *out) const {
 
 Value *VariableAST::codegen() {
     Value *V = NamedValues[name];
-    return V ? V : ERROR("Unknown variable name");
+    return V ? V : ERROR("Unknown variable name '%s'", name.c_str());
 }
 
 // int VariableAST::type() {
