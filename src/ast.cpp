@@ -33,7 +33,7 @@ Module *TheModule() {
     return _TheModule;
 }
 IRBuilder<> Builder(getGlobalContext());
-std::map<std::string, Value*> NamedValues;
+std::map<std::string, AllocaInst*> NamedValues;
 
 void generate_prelude(Module *mod) {
     // "C" printf(fmt: ^str, args...) -> void
@@ -55,6 +55,7 @@ void generate_prelude(Module *mod) {
                                           Function::ExternalLinkage,
                                           "printi64",
                                           mod);
+    printi64->arg_begin()->setName("n");
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", printi64);
     Builder.SetInsertPoint(bb);
     Value *fmtstr = Builder.CreateGlobalStringPtr("%li\n");
@@ -89,8 +90,11 @@ void VariableAST::print(std::ostream *out) const {
 }
 
 Value *VariableAST::expr_codegen() {
-    Value *V = NamedValues[name];
-    return V ? V : ERROR("Unknown variable name '%s'", name.c_str());
+    auto ptr = NamedValues.find(name);
+    if (ptr == NamedValues.end()) {
+        return ERROR("Unknown variable name '%s'", name.c_str());
+    }
+    return Builder.CreateLoad(NamedValues[name], name);
 }
 
 // int VariableAST::type() {
@@ -179,23 +183,42 @@ AssignmentAST::AssignmentAST(std::string name, ExprAST *rhs)
     : name(name), rhs(rhs) {}
 
 void AssignmentAST::print(std::ostream *out) const {
-    *out << name << " = ";
+    *out << "let " << name << " = ";
     rhs->print(out);
 }
 
 bool AssignmentAST::codegen() {
     // TODO(Caleb Jones): Implement
     // Is this a correct implementation?
+    auto ptr = Builder.CreateAlloca(Type::getInt64Ty(getGlobalContext()),
+                                    nullptr, name);
     auto value = rhs->expr_codegen();
     if (value == NULL) return false;
-    value->setName(name);
-    NamedValues[name] = value;
+
+    Builder.CreateStore(value, ptr);
+    // value->setName(name);
+    NamedValues[name] = ptr;
     return true;
 }
 
-// int AssignmentAST::type() {
-//     return ASSIGNMENT_AST;
-// }
+// ========================================================================= //
+// Reassignment
+// ========================================================================= //
+ReassignAST::ReassignAST(std::string name, ExprAST *rhs)
+    : name(name), rhs(rhs) {}
+
+void ReassignAST::print(std::ostream *out) const {
+    *out << name << " = ";
+    rhs->print(out);
+}
+
+bool ReassignAST::codegen() {
+    auto value = rhs->expr_codegen();
+    if (value == NULL) return false;
+    if (NamedValues.find(name) == NamedValues.end()) return false;
+    Builder.CreateStore(value, NamedValues[name]);
+    return true;
+}
 
 // ========================================================================= //
 // Return
@@ -221,55 +244,7 @@ bool ReturnAST::codegen() {
 // }
 
 // ========================================================================= //
-// Function Prototypes
-// ========================================================================= //
-PrototypeAST::PrototypeAST(std::string name, std::vector<std::string> args)
-    : name(name), args(args) {}
-
-std::ostream& operator<<(std::ostream& out, PrototypeAST const& ast) {
-    out << ast.name << "(";
-    for (auto iter = ast.args.begin(); iter != ast.args.end(); iter++) {
-        out << *iter << ", ";
-    }
-    out << ")";
-    return out;
-}
-
-Function *PrototypeAST::codegen() {
-    // Make the function type: (Currently just (double, double, ...) -> double)
-    std::vector<Type*> ints(args.size(),
-                            Type::getInt64Ty(getGlobalContext()));
-    auto ret_type = Type::getInt64Ty(getGlobalContext());
-    if (name == "main") {
-        ret_type = Type::getInt32Ty(getGlobalContext());
-    }
-    FunctionType *ftype = FunctionType::get(
-        ret_type,
-        ints,
-        false);
-
-    Function *f = Function::Create(ftype,
-                                   Function::ExternalLinkage,
-                                   name,
-                                   TheModule());
-
-    // Check for name conflicts
-    if (f->getName() != name) {
-        return ERROR("redifinition of a function");
-    }
-
-    // Set the names of all the arguments
-    unsigned idx = 0;
-    for (auto iter = f->arg_begin(); idx != args.size(); idx++, iter++) {
-        iter->setName(args[idx]);
-        NamedValues[args[idx]] = iter;
-    }
-
-    return f;
-}
-
-// ========================================================================= //
-// Conditions
+// Conditional
 // ========================================================================= //
 IfElseAST::IfElseAST(ExprAST *cond,
                      std::vector<StatementAST*> ifbody,
@@ -344,6 +319,48 @@ bool IfElseAST::codegen() {
 
     return true;
 }
+
+// ========================================================================= //
+// Function Prototypes
+// ========================================================================= //
+PrototypeAST::PrototypeAST(std::string name, std::vector<std::string> args)
+    : name(name), args(args) {}
+
+std::ostream& operator<<(std::ostream& out, PrototypeAST const& ast) {
+    out << ast.name << "(";
+    for (auto iter = ast.args.begin(); iter != ast.args.end(); iter++) {
+        out << *iter << ", ";
+    }
+    out << ")";
+    return out;
+}
+
+Function *PrototypeAST::codegen() {
+    // Make the function type: (Currently just (double, double, ...) -> double)
+    std::vector<Type*> ints(args.size(),
+                            Type::getInt64Ty(getGlobalContext()));
+    auto ret_type = Type::getInt64Ty(getGlobalContext());
+    if (name == "main") {
+        ret_type = Type::getInt32Ty(getGlobalContext());
+    }
+    FunctionType *ftype = FunctionType::get(
+        ret_type,
+        ints,
+        false);
+
+    Function *f = Function::Create(ftype,
+                                   Function::ExternalLinkage,
+                                   name,
+                                   TheModule());
+
+    // Check for name conflicts
+    if (f->getName() != name) {
+        return ERROR("redifinition of a function");
+    }
+
+    return f;
+}
+
 // ========================================================================= //
 // Functions
 // ========================================================================= //
@@ -360,7 +377,7 @@ std::ostream& operator<<(std::ostream& out, FunctionAST const& ast) {
 }
 
 Function *FunctionAST::codegen() {
-    // std::cout << *this << std::endl;
+    std::cout << *this << std::endl;
     NamedValues.clear();
 
     Function *function = proto->codegen();
@@ -370,6 +387,16 @@ Function *FunctionAST::codegen() {
 
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", function);
     Builder.SetInsertPoint(bb);
+
+    // Set the names of all the arguments
+    unsigned idx = 0;
+    for (auto iter = function->arg_begin(); idx != proto->args.size(); idx++, iter++) {
+        iter->setName(proto->args[idx]);
+        auto ptr = Builder.CreateAlloca(Type::getInt64Ty(getGlobalContext()),
+                                        nullptr, proto->args[idx]);
+        Builder.CreateStore(iter, ptr);
+        NamedValues[proto->args[idx]] = ptr;
+    }
 
     for (auto iter = body.begin(); iter != body.end(); iter++) {
         bool success = (*iter)->codegen();

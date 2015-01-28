@@ -35,6 +35,7 @@ enum Tokens {
     tokProduces,
     tokDef,
     tokLet,
+    tokRe,
     tokMut,
     tokStruct,
     tokFor,

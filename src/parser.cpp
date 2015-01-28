@@ -21,12 +21,19 @@ Parser::Parser(Tokenizer &tok) : tokenizer(tok) {
     operator_precedence['>'] = 10;
     operator_precedence[tokEq] = 10;
     operator_precedence[tokIneq] = 10;
+    operator_precedence['='] = 1;
     get_next_token();  // Prime the token pump!
 }
 
 int Parser::get_next_token() {
     auto value = next_token;
     next_token = tokenizer.get_token();
+    // Don't submit duplicate newline tokens
+    if (value == tokNewline) {
+        while (next_token == tokNewline) {
+            next_token = tokenizer.get_token();
+        }
+    }
     return value;
 }
 
@@ -124,6 +131,29 @@ StatementAST *Parser::parse_assignment() {
     return new AssignmentAST(name, rhs);
 }
 
+StatementAST *Parser::parse_reassignment() {
+    if (next_token != tokRe) {
+        return ERROR("ICE: Expecting 're' in Parser::parse_reassignment");
+    }
+    get_next_token();  // Consume the 'let'
+
+    std::string name;
+    if (next_token != tokIdentifier) {
+        return ERROR("expecting variable name after 're'");
+    }
+    name = tokenizer.identifier_string;
+    get_next_token();  // Consume the LHS
+
+    if (next_token != '=') return ERROR("expecting = after variable name "
+                            "(declaration without definition not supported)");
+    get_next_token();  // Consume the '='
+
+    ExprAST *rhs = parse_expression();
+    if (rhs == NULL) return ERROR("expecting expression after '='");
+
+    return new ReassignAST(name, rhs);
+}
+
 StatementAST *Parser::parse_return() {
     if (next_token != tokReturn) {
         ERROR("ICE: expecting return in Parser::parse_return");
@@ -142,6 +172,8 @@ StatementAST *Parser::parse_line() {
     StatementAST *result = NULL;
     if (next_token == tokLet) {
         result = parse_assignment();
+    } else if (next_token == tokRe) {
+        result = parse_reassignment();
     } else if (next_token == tokReturn) {
         result = parse_return();
     } else if (next_token == tokIf) {

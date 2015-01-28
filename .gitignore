@@ -1,6 +1,9 @@
 ###Project###
 lensc
 
+# LLVM IR 
+*.ll
+
 ###C++###
 
 # Compiled Object files

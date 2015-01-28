@@ -18,4 +18,8 @@ def fib(n: i64) -> i64:
         else:
             return fib(n - 1) + fib(n - 2)
 
-printi64(fib(13))
+def min(a: i64, b: i64) -> i64:
+    if a < b:
+        return a
+    else:
+        return b

@@ -33,9 +33,12 @@ int main() {
 
     FunctionPassManager OurFPM(module);
 
+    // NOTE! This block taken almost directly from the kaleidescope tutorial
+
     // Set up the optimizer pipeline.  Start with registering info about how the
     // target lays out data structures.
     // OurFPM.add(new DataLayout(*TheExecutionEngine->getDataLayout()));
+
     // Provide basic AliasAnalysis support for GVN.
     OurFPM.add(createBasicAliasAnalysisPass());
     // Do simple "peephole" optimizations and bit-twiddling optzns.
@@ -46,6 +49,8 @@ int main() {
     OurFPM.add(createGVNPass());
     // Simplify the control flow graph (deleting unreachable blocks, etc).
     OurFPM.add(createCFGSimplificationPass());
+    // Remove unneccesary stores
+    OurFPM.add(createDeadStoreEliminationPass());
 
     OurFPM.doInitialization();
 

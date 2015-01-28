@@ -53,6 +53,7 @@ int Tokenizer::get_ident() {
     // if so, return the keyword token instead of an identifier
     if (identifier_string == "def") return tokDef;
     if (identifier_string == "let") return tokLet;
+    if (identifier_string == "re") return tokRe;
     if (identifier_string == "mut") return tokMut;
     if (identifier_string == "if") return tokIf;
     if (identifier_string == "elif") return tokElif;

@@ -16,6 +16,7 @@ enum AST_TYPES {
     VARIABLE_AST,
     BINARY_EXPR_AST,
     CALL_AST,
+    REASSIGN_AST,
     ASSIGNMENT_AST,
     RETURN_AST,
     STATEMENT_AST,
@@ -105,6 +106,18 @@ class AssignmentAST : public StatementAST {
     virtual int type() { return AssignmentAST::idtype; }
 };
 
+// <ident> = <expr>
+class ReassignAST : public StatementAST {
+    static const int idtype = REASSIGN_AST;
+    std::string name;
+    ExprAST *rhs;
+ public:
+    virtual void print(std::ostream* out) const;
+    ReassignAST(std::string name, ExprAST *rhs);
+    virtual bool codegen();
+    virtual int type() { return ReassignAST::idtype; }
+};
+
 // return <expr>
 class ReturnAST : public StatementAST {
     static const int idtype = RETURN_AST;
@@ -133,9 +146,7 @@ class IfElseAST : public StatementAST {
 class PrototypeAST {
  public:
     std::string name;
- private:
     std::vector<std::string> args;
- public:
     PrototypeAST(std::string name, std::vector<std::string> args);
     friend std::ostream& operator<<(std::ostream& out, PrototypeAST const& ast);
     llvm::Function *codegen();
