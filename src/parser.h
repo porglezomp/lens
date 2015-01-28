@@ -27,6 +27,7 @@ class Parser {
     StatementAST *parse_assignment();
     ExprAST *parse_binop_rhs(int precedence, ExprAST *lhs);
     StatementAST *parse_return();
+    StatementAST *parse_ifelse();
 
     FunctionAST *parse_function();
     FunctionAST *parse_top_level();

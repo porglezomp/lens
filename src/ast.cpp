@@ -7,27 +7,60 @@
 #include <string>
 #include <vector>
 
+#include "src/tokenizer.h"
+
 // #include "llvm/IR/Verifier.h"
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
 #include "llvm/Analysis/Verifier.h"
 
 #define ERROR(msg, ...) (printf("Code generation error: " msg "\n", \
 ##__VA_ARGS__), nullptr)
+#define ERRORB(msg, ...) (printf("Code generation error: " msg "\n", \
+##__VA_ARGS__), false)
 
 using namespace llvm;
+
+void generate_prelude(Module *mod);
 
 Module *_TheModule;
 Module *TheModule() {
     if (_TheModule == NULL) {
         _TheModule = new Module("Whatever", getGlobalContext());
+        generate_prelude(_TheModule);
     }
     return _TheModule;
 }
 IRBuilder<> Builder(getGlobalContext());
 std::map<std::string, Value*> NamedValues;
+
+void generate_prelude(Module *mod) {
+    // "C" printf(fmt: ^str, args...) -> void
+    std::vector<Type*> printf_args = {Builder.getInt8Ty()->getPointerTo()};
+
+    FunctionType *printf_type =
+        FunctionType::get(Builder.getInt32Ty(), printf_args, true);
+    Constant *printf_func = mod->getOrInsertFunction("printf", printf_type);
+
+    // printi64(n: i64) -> void
+    std::vector<Type*> argtypes;
+    argtypes.push_back(Builder.getInt64Ty());
+    std::vector<Type*> v = {Type::getInt64Ty(getGlobalContext())};
+    FunctionType *printi64_type = FunctionType::get(
+        Type::getVoidTy(getGlobalContext()),
+        v,
+        false);
+    Function *printi64 = Function::Create(printi64_type,
+                                          Function::ExternalLinkage,
+                                          "printi64",
+                                          mod);
+    BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", printi64);
+    Builder.SetInsertPoint(bb);
+    Value *fmtstr = Builder.CreateGlobalStringPtr("%li\n");
+    Builder.CreateCall2(printf_func, fmtstr, printi64->arg_begin());
+    Builder.CreateRetVoid();
+}
 
 // ========================================================================= //
 // Numbers
@@ -39,7 +72,7 @@ void NumberAST::print(std::ostream *out) const {
 }
 
 Value *NumberAST::expr_codegen() {
-    return ConstantFP::get(getGlobalContext(), APFloat(value));
+    return ConstantInt::get(getGlobalContext(), APInt(64, value));
 }
 
 // int NumberAST::type() {
@@ -84,10 +117,14 @@ Value *BinaryExprAST::expr_codegen() {
     if (L == NULL || R == NULL) return NULL;
 
     switch (op) {
-    case '+': return Builder.CreateFAdd(L, R, "addtmp");
-    case '-': return Builder.CreateFSub(L, R, "subtmp");
-    case '*': return Builder.CreateFMul(L, R, "multmp");
-    case '/': return Builder.CreateFDiv(L, R, "divtmp");
+    case '+': return Builder.CreateAdd(L, R, "addtmp");
+    case '-': return Builder.CreateSub(L, R, "subtmp");
+    case '*': return Builder.CreateMul(L, R, "multmp");
+    case '/': return Builder.CreateSDiv(L, R, "divtmp");
+    case '<': return Builder.CreateICmpSLT(L, R, "lttmp");
+    case '>': return Builder.CreateICmpSGT(L, R, "gttmp");
+    case tokEq: return Builder.CreateICmpEQ(L, R, "eqtmp");
+    case tokNotEq: return Builder.CreateICmpNE(L, R, "neqtmp");
     default: return ERROR("invalid binary operator");
     }
 }
@@ -114,11 +151,12 @@ void CallAST::print(std::ostream *out) const {
 Value *CallAST::expr_codegen() {
     Function *callee_function = TheModule()->getFunction(name);
     if (callee_function == NULL) {
-        return ERROR("unknown function referenced");
+        return ERROR("unknown function '%s' referenced", name.c_str());
     }
 
     if (callee_function->arg_size() != args.size()) {
-        return ERROR("incorrect number of arguments");
+        return ERROR("incorrect number of arguments (%s expected %li, %li given)",
+                     name.c_str(), callee_function->arg_size(), args.size());
     }
 
     std::vector<Value*> argv;
@@ -127,7 +165,7 @@ Value *CallAST::expr_codegen() {
         if (argv.back() == NULL) return NULL;
     }
 
-    return Builder.CreateCall(callee_function, argv, "calltmp");
+    return Builder.CreateCall(callee_function, argv);
 }
 
 // int CallAST::type() {
@@ -199,15 +237,15 @@ std::ostream& operator<<(std::ostream& out, PrototypeAST const& ast) {
 
 Function *PrototypeAST::codegen() {
     // Make the function type: (Currently just (double, double, ...) -> double)
-    std::vector<Type*> doubles(args.size(),
-                               Type::getDoubleTy(getGlobalContext()));
-    auto ret_type = Type::getDoubleTy(getGlobalContext());
+    std::vector<Type*> ints(args.size(),
+                            Type::getInt64Ty(getGlobalContext()));
+    auto ret_type = Type::getInt64Ty(getGlobalContext());
     if (name == "main") {
         ret_type = Type::getInt32Ty(getGlobalContext());
     }
     FunctionType *ftype = FunctionType::get(
         ret_type,
-        doubles,
+        ints,
         false);
 
     Function *f = Function::Create(ftype,
@@ -233,8 +271,79 @@ Function *PrototypeAST::codegen() {
 // ========================================================================= //
 // Conditions
 // ========================================================================= //
-IfElseAST::IfElseAST() {}
+IfElseAST::IfElseAST(ExprAST *cond,
+                     std::vector<StatementAST*> ifbody,
+                     std::vector<StatementAST*> elsebody)
+    : condition(cond), ifbody(ifbody), elsebody(elsebody) {}
 
+void IfElseAST::print(std::ostream* out) const {
+    *out << "IF: ";
+    *out << *condition;
+    *out << "\n";
+    for (auto iter = ifbody.begin(); iter != ifbody.end(); iter++) {
+        *out << "    "  << **iter << "\n";
+    }
+    *out << "    ELSE:\n";
+    for (auto iter = elsebody.begin(); iter != elsebody.end(); iter++) {
+        *out << "    " << **iter << "\n";
+    }
+}
+
+bool IfElseAST::codegen() {
+    Function *fn = Builder.GetInsertBlock()->getParent();
+
+    // Generate the basic blocks of the conditional
+    // if <cond>:
+    //     <ifbb>
+    // else:
+    //     <elsebb>
+    // <mergebb>
+    BasicBlock *ifbb = BasicBlock::Create(getGlobalContext(), "if", fn);
+    BasicBlock *elsebb = BasicBlock::Create(getGlobalContext(), "else");
+    BasicBlock *mergebb = BasicBlock::Create(getGlobalContext(), "ifcont");
+
+    // Generate the code for <cond>
+    Value *condval = condition->expr_codegen();
+    if (condval == NULL) return ERRORB("failed generating condition for if");
+
+    Builder.CreateCondBr(condval, ifbb, elsebb);
+
+    Builder.SetInsertPoint(ifbb);
+    for (auto iter = ifbody.begin(); iter != ifbody.end(); iter++) {
+        bool success = (*iter)->codegen();
+        if (!success) return ERRORB("failed generating statement in if");
+    }
+    // Branch back to the merge block only if the code doesn't return directly
+    // out of the block. (LLVM IR doesn't like to have a branch after a return
+    // because then that's a return in middle of a block)
+    if (ifbody.back()->type() != RETURN_AST) Builder.CreateBr(mergebb);
+
+    // Codegen can change the current block (nested if, for example)
+    // Here we move ifbb back to the right block.
+    ifbb = Builder.GetInsertBlock();
+
+    // Add the else to the back of the function
+    fn->getBasicBlockList().push_back(elsebb);
+
+    Builder.SetInsertPoint(elsebb);
+    for (auto iter = elsebody.begin(); iter != elsebody.end(); iter++) {
+        bool success = (*iter)->codegen();
+        if (!success) return ERRORB("failed generating statement in if");
+    }
+    // Branch back to the merge block only if the code doesn't return directly
+    // out of the block. (LLVM IR doesn't like to have a branch after a return
+    // because then that's a return in middle of a block)
+    if (elsebody.back()->type() != RETURN_AST) Builder.CreateBr(mergebb);
+
+    // Codegen can change the current block (nested if, for example)
+    elsebb = Builder.GetInsertBlock();
+
+    // Add our merge block to the back of the function
+    fn->getBasicBlockList().push_back(mergebb);
+    Builder.SetInsertPoint(mergebb);
+
+    return true;
+}
 // ========================================================================= //
 // Functions
 // ========================================================================= //
@@ -251,6 +360,7 @@ std::ostream& operator<<(std::ostream& out, FunctionAST const& ast) {
 }
 
 Function *FunctionAST::codegen() {
+    // std::cout << *this << std::endl;
     NamedValues.clear();
 
     Function *function = proto->codegen();
@@ -261,9 +371,8 @@ Function *FunctionAST::codegen() {
     BasicBlock *bb = BasicBlock::Create(getGlobalContext(), "entry", function);
     Builder.SetInsertPoint(bb);
 
-    bool success;
     for (auto iter = body.begin(); iter != body.end(); iter++) {
-        success = (*iter)->codegen();
+        bool success = (*iter)->codegen();
         if (!success) {
             return ERROR("Error generating function code");
         }
@@ -271,8 +380,12 @@ Function *FunctionAST::codegen() {
     if (proto->name == "main") {
         Builder.CreateRet(
             ConstantInt::get(Type::getInt32Ty(getGlobalContext()), 0));
+    } else if (body.back()->type() != RETURN_AST) {
+        Builder.CreateRet(
+            ConstantInt::get(Type::getInt64Ty(getGlobalContext()), 0));
     }
 
+    // function->dump();
     verifyFunction(*function);
 
     return function;

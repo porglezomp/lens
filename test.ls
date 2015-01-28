@@ -10,9 +10,12 @@ def bar(x: i64, y: i64) -> i64:
     return (e + a) * x
 
 def fib(n: i64) -> i64:
-    if n < 3:
-        return 1
+    if n == 0:
+        return 0
     else:
-        return fib(n - 1) + fib(n - 2)
+        if n == 1:
+            return 1
+        else:
+            return fib(n - 1) + fib(n - 2)
 
-foo(3)
+printi64(fib(13))

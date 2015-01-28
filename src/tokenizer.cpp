@@ -14,21 +14,30 @@ Tokenizer::Tokenizer(Reader &r) : reader(r), line(&reader.next_line()), col(0) {
     get_char();
 }
 
+void Tokenizer::advance_line() {
+    line = &reader.next_line();
+    col = line->indentation + 1;
+    line_index = 0;
+    is_new_line = true;
+        if (line->is_eof) {
+        next_char = EOF;
+    } else {
+        next_char = line->text[line_index++];
+    }
+}
+
 char Tokenizer::get_char() {
     char value = next_char;
     // Do bookkeeping on line/column numbers
     if (value == '\n') {
-        line = &reader.next_line();
-        col = line->indentation + 1;
-        line_index = 0;
-        is_new_line = true;
+        advance_line();
     } else {
         col += 1;
-    }
-    if (line->is_eof) {
-        next_char = EOF;
-    } else {
-        next_char = line->text[line_index++];
+        if (line->is_eof) {
+            next_char = EOF;
+        } else {
+            next_char = line->text[line_index++];
+        }
     }
     return value;
 }
@@ -57,7 +66,7 @@ int Tokenizer::get_ident() {
     if (identifier_string == "none") return tokNone;
     if (identifier_string == "true") return tokTrue;
     if (identifier_string == "false") return tokFalse;
-    if (identifier_string == "f64") return tokType;
+    if (identifier_string == "i64") return tokType;
     return tokIdentifier;
 }
 
@@ -85,6 +94,19 @@ int Tokenizer::get_num() {
 }
 
 int Tokenizer::get_token() {
+    // Clean out any whitespace between tokens
+    // We do this before new line handling, even though all new lines
+    // should start with a character (the reader strips the indentation)
+    // because we need it before comments
+    while (isblank(next_char)) {
+        get_char();
+    }
+    // Strip comments before handling new lines, because comments don't have
+    // to follow indentation rules
+    if (next_char == '#') {
+        advance_line();
+        return tokNewline;
+    }
     // Handle any potential new lines
     if (is_new_line) {
         // If the current line is indented more than the previous one,
@@ -110,10 +132,6 @@ int Tokenizer::get_token() {
         // so we don't need to submit any tokens
         is_new_line = false;
     }
-    // Clean out any whitespace between tokens
-    while (isblank(next_char)) {
-        get_char();
-    }
     // Identifiers: [a-zA-Z_][a-zA-Z0-9_]*
     if (isalpha(next_char) || next_char == '_') {
         return get_ident();
@@ -122,6 +140,8 @@ int Tokenizer::get_token() {
     if (isdigit(next_char)) {
         return get_num();
     }
+    // Handle multi-character tokens
+    // ->
     if (next_char == '-') {
         get_char();  // Consume '-'
         if (next_char == '>') {
@@ -131,6 +151,29 @@ int Tokenizer::get_token() {
         }
         return '-';
     }
+
+    // ==
+    if (next_char == '=') {
+        get_char();  // Consume '='
+        if (next_char == '=') {
+            // We've found an "equality" token (==)
+            get_char();  // Consume '='
+            return tokEq;
+        }
+        return '=';
+    }
+
+    // !=
+    if (next_char == '!') {
+        get_char();  // Consume '!'
+        if (next_char == '=') {
+            // We've found an "inequality" token (!=)
+            get_char();  // Consume '='
+            return tokIneq;
+        }
+        return '!';
+    }
+
     // Recognize EOF
     if (next_char == EOF) {
         // Drop out to global scope at the end of the file

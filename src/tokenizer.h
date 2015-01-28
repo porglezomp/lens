@@ -45,6 +45,7 @@ enum Tokens {
     tokAnd,
     tokOr,
     tokEq,
+    tokIneq,
     tokNot,
     tokAssign,
     tokNotEq,
@@ -80,6 +81,7 @@ class Tokenizer {
     char get_char();
     int get_token();
  private:
+    void advance_line();
     int get_num();
     int get_ident();
 };

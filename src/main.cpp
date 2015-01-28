@@ -60,8 +60,9 @@ int main() {
         auto code = result->codegen();
         if (code != NULL) {
             OurFPM.run(*code);
-            code->dump();
         }
     }
+
+    TheModule()->dump();
     return 0;
 }

@@ -17,6 +17,10 @@ Parser::Parser(Tokenizer &tok) : tokenizer(tok) {
     operator_precedence['-'] = 20;
     operator_precedence['*'] = 40;
     operator_precedence['/'] = 40;
+    operator_precedence['<'] = 10;
+    operator_precedence['>'] = 10;
+    operator_precedence[tokEq] = 10;
+    operator_precedence[tokIneq] = 10;
     get_next_token();  // Prime the token pump!
 }
 
@@ -140,6 +144,8 @@ StatementAST *Parser::parse_line() {
         result = parse_assignment();
     } else if (next_token == tokReturn) {
         result = parse_return();
+    } else if (next_token == tokIf) {
+        result = parse_ifelse();
     } else {
         return parse_expression();
     }
@@ -147,6 +153,55 @@ StatementAST *Parser::parse_line() {
         get_next_token();  // Consume the newline at the end of the line
     }
     return result;
+}
+
+StatementAST *Parser::parse_ifelse() {
+    if (next_token != tokIf) {
+        return ERROR("ICE: Expecting 'if' in Parser::parse_ifelse");
+    }
+    get_next_token();  // Consume 'if'
+    ExprAST *condition = parse_expression();
+    if (condition == NULL) return ERROR("expecting condition after 'if'");
+    if (next_token != ':') return ERROR("expecting ':' after condition");
+    get_next_token();  // Consume ':'
+    if (next_token != tokNewline) {
+        return ERROR("expecting newline after if statement");
+    }
+    get_next_token();  // Consume newline
+    if (next_token != tokIndent) {
+        return ERROR("expecing indent after if statement");
+    }
+    get_next_token();  // Consume the indent token
+
+    std::vector<StatementAST*> ifbody;
+    while (next_token != tokDedent) {
+        auto line = parse_line();
+        if (line == NULL) return ERROR("Error parsing body of if");
+        ifbody.push_back(line);
+    }
+
+    get_next_token();  // Consume the unindent token
+    if (next_token != tokElse) return ERROR("if without else unsupported");
+    get_next_token();  // Consume the 'else'
+    if (next_token != ':') return ERROR("expecting ':' after 'else'");
+    get_next_token();  // Consume the ':'
+    if (next_token != tokNewline) return ERROR("expecting newline after ':'");
+    get_next_token();  // Consume the newline
+    if (next_token != tokIndent) {
+        return ERROR("expecting indent after else statement");
+    }
+    get_next_token();  // Consume the indentation token
+
+    std::vector<StatementAST*> elsebody;
+    while (next_token != tokDedent) {
+        auto line = parse_line();
+        if (line == NULL) return ERROR("Error parsing body of else");
+        elsebody.push_back(line);
+    }
+
+    get_next_token();  // Consume the unindent token
+
+    return new IfElseAST(condition, ifbody, elsebody);
 }
 
 FunctionAST *Parser::parse_function() {
